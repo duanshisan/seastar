@@ -109,6 +109,41 @@ public:
     }
 };
 
+class gate_ticket {
+    gate& _g; 
+    bool  _invalid = false;
+
+public: 
+    static gate_ticket get_ticket(gate& g) {
+        g.enter();
+        gate_ticket ticket(g);
+        return std::move(ticket);
+    }
+
+public:
+    gate_ticket(gate& g) noexcept : _g(g), _invalid(true) {}   
+
+    ~gate_ticket() noexcept {
+        if (_invalid) {
+            _g.leave();
+        }   
+    }   
+
+    gate_ticket(gate_ticket&& ticket) noexcept : _g(ticket._g), _invalid(ticket._invalid) {
+        ticket._invalid = false;
+    }   
+
+    gate_ticket& operator=(gate_ticket&& ticket) noexcept {
+        if (this != &ticket) {
+            this->~gate_ticket();
+            new (this) gate_ticket(std::move(ticket));
+        }   
+        return *this;
+    }   
+    
+    gate_ticket(const gate_ticket&) = delete;
+};
+
 /// Executes the function \c func making sure the gate \c g is properly entered
 /// and later on, properly left.
 ///
@@ -121,8 +156,8 @@ template <typename Func>
 inline
 auto
 with_gate(gate& g, Func&& func) {
-    g.enter();
-    return func().finally([&g] { g.leave(); });
+    auto&& ticket = gate_ticket::get_ticket(g);
+    return futurize_apply(std::forward<Func>(func)).finally([ticket = std::move(ticket)] {});
 }
 /// @}
 
